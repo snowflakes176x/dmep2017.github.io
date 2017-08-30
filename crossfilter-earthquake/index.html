@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Earth Quake Over 6 in 100 Years</title>
+
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="jquery.min.js">
+    <link rel="stylesheet" href="bootstrap.min.css">
+    <link rel="stylesheet" href="bootstrap.min.js">
+    <link rel="stylesheet" href="dc.css">
+    <!-- Note: the v3 version of D3  -->
+    <script src="d3.js"></script>
+    <script src="crossfilter.js"></script>
+    <script src="dc.js"></script>
+
+    <style>
+        #map {
+            background-image: url(Mercator_projection_SW.jpg);
+            background-repeat: no-repeat;
+            background-size: 100% 100%;
+            width: 320px;
+            height: 320px;
+            display: block;
+        }
+    </style>
+
+</head>
+
+<body>
+    <div class="container">
+        <div class="row">
+            <div class="col-xs-12">
+                <h2>Earth Quake Over 6 in 100 Years</h2>
+                <div class="row">
+                    <div class="col-xs-6">
+                        <div id="magnitude">
+                            <div><a class="reset">reset</a></div>
+                        </div>
+                    </div>
+                    <div class="col-xs-6">
+                        <div id="map">
+                            <svg width=320 height=320>   </svg>
+                        </div>
+                    </div>
+
+                </div>
+                <div class="row">
+                    <div class="col-xs-4">
+                        <div id="latitude">
+                            <div><a class="reset">reset</a></div>
+                        </div>
+                    </div>
+                    <div class="col-xs-4">
+                        <div id="longitude">
+                            <div><a class="reset">reset</a></div>
+                        </div>
+                    </div>
+                    <div class="col-xs-4">
+                        <div id="elevation">
+                            <div><a class="reset">reset</a></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="year">
+                    <div><a class="reset" href="javascript:yearChart.filterAll();dc.redrawAll()">reset</a></div>
+                </div>
+                <div id="table">
+                </div>
+            </div>
+
+            <script>
+                d3.csv('earthquake-lean.csv', function(data) {
+                    var dateFormat = d3.time.format('%Y')
+                    data.forEach(function(e) {
+                        e.dd = dateFormat.parse(e.year);
+                        e.year = d3.time.year(e.dd);
+                        // console.log(e)
+                    });
+
+                    dataset = crossfilter(data);
+
+                    updateMap = function() {
+                        projection = d3.geo.mercator()
+                            // .scale(30)
+                            .scale((320 - 3) / (2 * Math.PI))
+                            .center([0, 0])
+                            .translate([320 / 2, 320 / 2])
+                            // geoPath = d3
+                            //     .geo.path()
+                            //     .projection(projection)
+                        var svg = d3.select('#map svg');
+                        var filteredRecords = dummyDimension.top(Infinity);
+                        console.log(filteredRecords)
+                        svg
+                            .selectAll('circle').remove()
+                        svg
+                            .selectAll('circle')
+                            .data(filteredRecords)
+                            .enter()
+                            .append('circle')
+                            .style('fill', 'rgba(0,0,0,0)')
+                            .style('stroke', 'rgba(255,0,0,0.2)')
+                            .attr('r', 3)
+                            .attr('cx', function(d) {
+                                return projection([+d.longitude, +d.latitude])[0];
+                            })
+                            .attr('cy', function(d) {
+                                return projection([+d.longitude, +d.latitude])[1];
+                            })
+                    }
+
+                    var createDimensionBarChart = function(dimensionName, chartID, precision) {
+                        var dimension = dataset.dimension(function(d) {
+                            return +d[dimensionName];
+                        })
+                        var group = dimension.group(function(d) {
+                            return Math.floor(d / precision) * precision;
+                        })
+                        var chart = dc.barChart('#' + chartID);
+                        chart
+                            .width(200)
+                            .height(150)
+                            .margins({
+                                top: 20,
+                                right: 10,
+                                bottom: 20,
+                                left: 50
+                            })
+                            .dimension(dimension)
+                            .group(group)
+                            .x(d3.scale.linear().domain([5, 10]))
+                            .xUnits(dc.units.fp.precision(precision))
+                            .elasticX(true)
+                            .elasticY(true)
+                            .centerBar(true)
+                            .on('filtered', updateMap)
+
+                        d3
+                            .select('#' + chartID)
+                            .select('a')
+                            .on('click', function() {
+                                chart.filterAll();
+                                dc.redrawAll();
+                            })
+                    }
+                    createDimensionBarChart('magnitude', 'magnitude', 0.2)
+                    createDimensionBarChart('latitude', 'latitude', 1)
+                    createDimensionBarChart('longitude', 'longitude', 1)
+                    createDimensionBarChart('elevation', 'elevation', 1)
+
+                    yearDimension = dataset.dimension(function(d) {
+                            return d.year;
+                        })
+                        // Identity group: Namely, ever year is a group
+                    yearGroup = yearDimension.group().reduceCount()
+                    yearChart = dc.barChart('#year');
+                    yearChart
+                        .width(600)
+                        .height(150)
+                        .dimension(yearDimension)
+                        .group(yearGroup)
+                        .centerBar(true)
+                        .gap(1)
+                        .x(d3.time.scale().domain([new Date(1908, 0, 1), new Date(2017, 11, 31)]))
+                        .round(d3.time.year.round)
+                        .alwaysUseRounding(true)
+                        .xUnits(d3.time.years)
+                        .margins({
+                            top: 30,
+                            right: 50,
+                            bottom: 25,
+                            left: 40
+                        })
+                        .elasticX(true)
+                        .elasticY(true)
+                        .on('filtered', updateMap)
+
+                    earthquakeTable = dc.dataTable('#table');
+                    earthquakeTable
+                        .width(768)
+                        .height(480)
+                        .dimension(yearDimension)
+                        .group(function() {
+                            return 0; // dummy grouping
+                        })
+                        .size(Infinity)
+                        .columns([
+                            'magnitude',
+                            'latitude',
+                            'longitude',
+                            'elevation',
+                            'dd',
+                        ])
+                        .sortBy(function(d) {
+                            return +d.magnitude;
+                        })
+                        .order(d3.descending)
+                        .beginSlice(0)
+                        .endSlice(10)
+
+                    dummyDimension = dataset.dimension(function() {
+                        return 0
+                    })
+
+                    updateMap()
+                    dc.renderAll();
+                })
+            </script>
+        </div>
+    </div>
+</body>
+
+</html>
